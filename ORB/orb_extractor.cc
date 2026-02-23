@@ -218,9 +218,9 @@ void orb_extract(
     xf::cv::AXIvideo2xfMat(image_in, img_raw);
 
     // ---------- Step 2: Gaussian blur (reduces noise) ----------
-    xf::cv::GaussianBlur<3, XF_BORDER_CONSTANT,
-                         XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
-        (img_raw, img_blur, 1.0f);
+    xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
+                     XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+    (img_raw, img_blur, 2.0f);
 
     // ---------- Step 3: FAST corner detection ----------
     // Threshold=20, non-max suppression=true
