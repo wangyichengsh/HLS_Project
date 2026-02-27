@@ -78,25 +78,23 @@ static const int8_t BRIEF_PATTERN[256][4] = {
 // Compute intensity centroid angle for a keypoint
 // Returns angle in degrees * 256 (Q8 fixed point)
 // -------------------------------------------------------
-static int16_t compute_orientation(
-    img_mat_t &img,
-    int kx, int ky)
+static int16_t compute_orientation_buf(
+    uint8_t buf[], int kx, int ky, int rows, int cols)
 {
-#pragma HLS INLINE
     int32_t m10 = 0, m01 = 0;
     const int R = 15; // patch radius
 
     ORIENT_ROW: for (int dy = -R; dy <= R; dy++) {
 #pragma HLS PIPELINE II=1
         int row = ky + dy;
-        if (row < 0 || row >= img.rows) continue;
+        if (row < 0 || row >= rows) continue;
 
         ORIENT_COL: for (int dx = -R; dx <= R; dx++) {
             int col = kx + dx;
-            if (col < 0 || col >= img.cols) continue;
+            if (col < 0 || col >= cols) continue;
             if (dx*dx + dy*dy > R*R) continue;
 
-            uint8_t val = img.read(row * img.cols + col);
+            uint8_t val = buf[row * cols + col];
             m10 += dx * val;
             m01 += dy * val;
         }
@@ -124,13 +122,12 @@ static int16_t compute_orientation(
 // -------------------------------------------------------
 // Rotate a BRIEF pattern point by angle and sample image
 // -------------------------------------------------------
-static uint8_t sample_pixel(
-    img_mat_t &img,
-    int cx, int cy,
+static uint8_t sample_pixel_buf(
+    uint8_t buf[], int cx, int cy,
     int8_t px, int8_t py,
-    int16_t cos_a, int16_t sin_a)  // Q8 fixed point
+    int16_t cos_a, int16_t sin_a,
+    int rows, int cols)
 {
-#pragma HLS INLINE
     // Rotate point (px,py) by angle
     int rx = (px * cos_a - py * sin_a) >> 8;
     int ry = (px * sin_a + py * cos_a) >> 8;
@@ -140,21 +137,19 @@ static uint8_t sample_pixel(
 
     if (sx < 0) sx = 0;
     if (sy < 0) sy = 0;
-    if (sx >= img.cols) sx = img.cols - 1;
-    if (sy >= img.rows) sy = img.rows - 1;
+    if (sx >= cols) sx = cols - 1;
+    if (sy >= rows) sy = rows - 1;
 
-    return img.read(sy * img.cols + sx);
+    return buf[sy * cols + sx];
 }
 
 // -------------------------------------------------------
 // Compute steered BRIEF descriptor for one keypoint
 // -------------------------------------------------------
-static void compute_descriptor(
-    img_mat_t &img,
-    int kx, int ky, int16_t angle,
-    Descriptor &desc)
+static void compute_descriptor_buf(
+    uint8_t buf[], int kx, int ky, int16_t angle,
+    int rows, int cols, Descriptor &desc)
 {
-#pragma HLS INLINE
     // Precompute cos/sin in Q8
     // Use ap_fixed or a small LUT for cos/sin
     // Simplified: use integer approximation
@@ -176,14 +171,16 @@ static void compute_descriptor(
 
     BRIEF_LOOP: for (int i = 0; i < 256; i++) {
 #pragma HLS PIPELINE II=1
-        uint8_t p1 = sample_pixel(img, kx, ky,
+        uint8_t p1 = sample_pixel_buf(buf, kx, ky,
                                   BRIEF_PATTERN[i][0],
                                   BRIEF_PATTERN[i][1],
-                                  cos_a, sin_a);
-        uint8_t p2 = sample_pixel(img, kx, ky,
+                                  cos_a, sin_a,
+                                  rows, cols);
+        uint8_t p2 = sample_pixel_buf(buf, kx, ky,
                                   BRIEF_PATTERN[i][2],
                                   BRIEF_PATTERN[i][3],
-                                  cos_a, sin_a);
+                                  cos_a, sin_a,
+                                  rows, cols);
 
         if (p1 < p2) {
             desc.d[i / 64] |= (uint64_t)1 << (i % 64);
@@ -214,46 +211,64 @@ void orb_extract(
     img_mat_t img_blur(rows, cols);
     img_mat_t img_fast(rows, cols);  // FAST writes mask here
 
-#pragma HLS DATAFLOW
-    xf::cv::AXIvideo2xfMat(image_in, img_raw);
+    {
+    #pragma HLS DATAFLOW
+        xf::cv::AXIvideo2xfMat(image_in, img_raw);
 
-    // ---------- Step 2: Gaussian blur (reduces noise) ----------
-    xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
-                     XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
-    (img_raw, img_blur, 2.0f);
-
-    // ---------- Step 3: FAST corner detection ----------
-    // Threshold=20, non-max suppression=true
-    xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+        // ---------- Step 2: Gaussian blur (reduces noise) ----------
+        xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
+                        XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+        (img_raw, img_blur, 2.0f);
+    
+        // ---------- Step 3: FAST corner detection ----------
+        // Threshold=20, non-max suppression=true
+        xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
         (img_blur, img_fast, 20);
+    }
+
+    static uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH];
+    #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_2P impl=BRAM
+
+     DUMP_BLUR: for (int i = 0; i < rows * cols; i++) {
+        #pragma HLS PIPELINE II=1
+        blur_buf[i] = (uint8_t)img_blur.read(i);
+    }
 
     // ---------- Step 4: Collect keypoints from FAST mask ----------
     int nkp = 0;
+
+    Keypoint kp_buf[MAX_KEYPOINTS];
+    #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_2P impl=BRAM
+
     COLLECT_KP: for (int r = PATCH_SIZE/2; r < rows - PATCH_SIZE/2; r++) {
         for (int c = PATCH_SIZE/2; c < cols - PATCH_SIZE/2; c++) {
-#pragma HLS PIPELINE II=1
-            if (nkp < MAX_KEYPOINTS) {
-                uint8_t val = img_fast.read(r * cols + c);
-                if (val > 0) {
-                    keypoints_out[nkp].x = c;
-                    keypoints_out[nkp].y = r;
-                    keypoints_out[nkp].score = val;
-                    nkp++;
-                }
+            #pragma HLS PIPELINE II=1
+            uint8_t val = img_fast.read(r * cols + c);
+            int idx = (nkp < MAX_KEYPOINTS) ? nkp : MAX_KEYPOINTS - 1;
+            bool valid = (val > 0) && (nkp < MAX_KEYPOINTS);
+            if (valid) {
+                kp_buf[idx].x     = c;
+                kp_buf[idx].y     = r;
+                kp_buf[idx].score = val;
+                nkp++;
             }
         }  
     }
     *num_keypoints = nkp;
+    
+    WRITEBACK: for (int i = 0; i < nkp; i++) {
+    #pragma HLS PIPELINE II=1
+        keypoints_out[i] = kp_buf[i];
+    }
 
     // ---------- Step 5: Orientation + Descriptor ----------
     DESC_LOOP: for (int i = 0; i < nkp; i++) {
-#pragma HLS PIPELINE II=1
         int kx = keypoints_out[i].x;
         int ky = keypoints_out[i].y;
 
-        int16_t angle = compute_orientation(img_blur, kx, ky);
+        int16_t angle = compute_orientation_buf(blur_buf, kx, ky, rows, cols);
         keypoints_out[i].angle = angle;
 
-        compute_descriptor(img_blur, kx, ky, angle, descriptors_out[i]);
+        compute_descriptor_buf(blur_buf, kx, ky, angle, rows, cols, descriptors_out[i]);
     }
 }
