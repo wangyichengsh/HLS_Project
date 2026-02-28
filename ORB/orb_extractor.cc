@@ -85,11 +85,12 @@ static int16_t compute_orientation_buf(
     const int R = 15; // patch radius
 
     ORIENT_ROW: for (int dy = -R; dy <= R; dy++) {
-#pragma HLS PIPELINE II=1
+
         int row = ky + dy;
         if (row < 0 || row >= rows) continue;
 
         ORIENT_COL: for (int dx = -R; dx <= R; dx++) {
+            #pragma HLS PIPELINE II=1
             int col = kx + dx;
             if (col < 0 || col >= cols) continue;
             if (dx*dx + dy*dy > R*R) continue;
@@ -238,7 +239,7 @@ void orb_extract(
     int nkp = 0;
 
     Keypoint kp_buf[MAX_KEYPOINTS];
-    #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_2P impl=BRAM
+    #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_T2P  impl=BRAM
 
     COLLECT_KP: for (int r = PATCH_SIZE/2; r < rows - PATCH_SIZE/2; r++) {
         for (int c = PATCH_SIZE/2; c < cols - PATCH_SIZE/2; c++) {
