@@ -95,7 +95,7 @@ static cv::Mat hls_descs_to_cv(const Descriptor descs[], int n)
 
         // 4. Copy the entire 32-byte struct at once
         // This is much faster than bit-shifting in a nested loop
-        std::memcpy(row_ptr, &descs[i], 32);
+        std::memcpy(row_ptr, &descs[i], sizeof(Descriptor));
     }
 
     return out;
@@ -163,8 +163,8 @@ bool match_and_merge(
 
 int main(int argc, char** argv) {
     // 1. Load Images
-    string img1_path = "foto1B.jpg";
-    string img2_path = "foto1A.jpg";
+    string img1_path = "foto1A.jpg";
+    string img2_path = "foto1B.jpg";
     
     cv::Mat image1 = imread(img1_path, cv::IMREAD_COLOR);
     cv::Mat image2 = imread(img2_path, cv::IMREAD_COLOR);
@@ -192,23 +192,27 @@ int main(int argc, char** argv) {
 
     // ---- Run HLS DUT ----
     static Keypoint   hls_kps1[MAX_KEYPOINTS],  hls_kps2[MAX_KEYPOINTS];
+    static uint64_t   hls_kps1_raw[MAX_KEYPOINTS];
+    static uint64_t   hls_kps2_raw[MAX_KEYPOINTS];
     static Descriptor hls_desc1[MAX_KEYPOINTS], hls_desc2[MAX_KEYPOINTS];
     int hls_n1 = 0, hls_n2 = 0;
 
-    hls::stream<pixel_t> axi_in1("axi_in");
-    hls::stream<pixel_t> axi_in2("axi_in");
+    hls::stream<pixel_t> axi_in1("axi_in1");
+    hls::stream<pixel_t> axi_in2("axi_in2");
     mat_to_axi_stream(gray1, axi_in1);
     mat_to_axi_stream(gray2, axi_in2);
 
     std::cout << "\nRunning HLS ORB...\n";
     orb_extract(axi_in1, gray1.rows, gray1.cols,
-                hls_kps1, hls_desc1, &hls_n1);
+                hls_kps1_raw, hls_desc1, &hls_n1);
     orb_extract(axi_in2, gray2.rows, gray2.cols,
-                hls_kps2, hls_desc2, &hls_n2);            
+                hls_kps2_raw, hls_desc2, &hls_n2);            
     std::cout << "Image 1 HLS detected  : " << hls_n1 << " keypoints\n";
     std::cout << "Image 2 HLS detected  : " << hls_n2 << " keypoints\n";
 
     // ---- Convert HLS outputs to OpenCV types for matching ----
+    for (int i = 0; i < hls_n1; i++) unpack_keypoint(hls_kps1_raw[i], hls_kps1[i]);
+    for (int i = 0; i < hls_n2; i++) unpack_keypoint(hls_kps2_raw[i], hls_kps2[i]);
     vector<cv::KeyPoint> cv_kp1  = hls_kps_to_cv(hls_kps1, hls_n1);
     vector<cv::KeyPoint> cv_kp2  = hls_kps_to_cv(hls_kps2, hls_n2);
     cv::Mat              cv_desc1 = hls_descs_to_cv(hls_desc1, hls_n1);

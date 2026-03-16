@@ -35,7 +35,22 @@ struct Descriptor {
 void orb_extract(
     hls::stream<pixel_t> &image_in,
     int rows, int cols,
-    Keypoint   keypoints_out[MAX_KEYPOINTS],
+    uint64_t   keypoints_out[MAX_KEYPOINTS],  
     Descriptor descriptors_out[MAX_KEYPOINTS],
     int *num_keypoints
 );
+
+inline uint64_t pack_keypoint(const Keypoint &kp) {
+    // x(16) | y(16) | angle(16) | score(8) | pad(8) = 64bit
+    return ((uint64_t)(uint16_t)kp.x)           |
+           ((uint64_t)(uint16_t)kp.y     << 16) |
+           ((uint64_t)(uint16_t)kp.angle << 32) |
+           ((uint64_t)(uint8_t) kp.score << 48);
+}
+
+inline void unpack_keypoint(uint64_t raw, Keypoint &kp) {
+    kp.x     = (uint16_t)(raw);
+    kp.y     = (uint16_t)(raw >> 16);
+    kp.angle = (int16_t) (raw >> 32);
+    kp.score = (uint8_t) (raw >> 48);
+}

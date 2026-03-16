@@ -149,8 +149,10 @@ static uint8_t sample_pixel_buf(
 // -------------------------------------------------------
 static void compute_descriptor_buf(
     uint8_t buf[], int kx, int ky, int16_t angle,
-    int rows, int cols, Descriptor &desc)
+    int rows, int cols, uint64_t desc_out[4])
 {
+#pragma HLS ARRAY_PARTITION variable=BRIEF_PATTERN complete dim=0
+    uint64_t d[4] = {0, 0, 0, 0};
     // Precompute cos/sin in Q8
     // Use ap_fixed or a small LUT for cos/sin
     // Simplified: use integer approximation
@@ -168,7 +170,7 @@ static void compute_descriptor_buf(
     else if (a < 315) { cos_a = (a-270)*256/45; sin_a = -256; }
     else              { cos_a = 256; sin_a = -(360-a)*256/45; }
 
-    desc.d[0] = desc.d[1] = desc.d[2] = desc.d[3] = 0;
+    d[0] = d[1] = d[2] = d[3] = 0;
 
     BRIEF_LOOP: for (int i = 0; i < 256; i++) {
 #pragma HLS PIPELINE II=1
@@ -184,10 +186,37 @@ static void compute_descriptor_buf(
                                   rows, cols);
 
         if (p1 < p2) {
-            desc.d[i / 64] |= (uint64_t)1 << (i % 64);
+            d[i / 64] |= (uint64_t)1 << (i % 64);
         }
     }
+    desc_out[0] = d[0];
+    desc_out[1] = d[1];
+    desc_out[2] = d[2];
+    desc_out[3] = d[3];
 }
+
+static void dump_to_bram(
+    img_mat_t &src,
+    uint8_t    dst[MAX_HEIGHT * MAX_WIDTH],
+    int        rows, int cols)
+{
+    DUMP_LOOP: for (int i = 0; i < rows * cols; i++) {
+    #pragma HLS PIPELINE II=1
+        dst[i] = (uint8_t)src.read(i);
+    }
+}
+
+static void dump_fast_mask(
+    img_mat_t &src,
+    uint8_t    dst[MAX_HEIGHT * MAX_WIDTH],
+    int        rows, int cols)
+{
+    FAST_DUMP_LOOP: for (int i = 0; i < rows * cols; i++) {
+    #pragma HLS PIPELINE II=1
+        dst[i] = (uint8_t)src.read(i);
+    }
+}
+
 
 // -------------------------------------------------------
 // Top-level ORB extractor
@@ -195,15 +224,17 @@ static void compute_descriptor_buf(
 void orb_extract(
     hls::stream<pixel_t> &image_in,
     int rows, int cols,
-    Keypoint   keypoints_out[MAX_KEYPOINTS],
+    uint64_t   keypoints_out[MAX_KEYPOINTS],  
     Descriptor descriptors_out[MAX_KEYPOINTS],
     int *num_keypoints)
 {
 #pragma HLS INTERFACE axis      port=image_in
 #pragma HLS INTERFACE s_axilite port=rows
 #pragma HLS INTERFACE s_axilite port=cols
-#pragma HLS INTERFACE m_axi     port=keypoints_out   depth=MAX_KEYPOINTS
-#pragma HLS INTERFACE m_axi     port=descriptors_out depth=MAX_KEYPOINTS
+#pragma HLS INTERFACE m_axi     port=keypoints_out   bundle=RESULT_BUS \
+                                depth=MAX_KEYPOINTS   offset=slave
+#pragma HLS INTERFACE m_axi     port=descriptors_out bundle=RESULT_BUS \
+                                depth=MAX_KEYPOINTS   offset=slave
 #pragma HLS INTERFACE s_axilite port=num_keypoints
 #pragma HLS INTERFACE s_axilite port=return
 
@@ -211,6 +242,14 @@ void orb_extract(
     img_mat_t img_raw(rows, cols);
     img_mat_t img_blur(rows, cols);
     img_mat_t img_fast(rows, cols);  // FAST writes mask here
+
+    static uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH];
+    #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_2P impl=BRAM
+    static uint8_t fast_buf[MAX_HEIGHT * MAX_WIDTH];
+    #pragma HLS BIND_STORAGE variable=fast_buf type=RAM_2P impl=BRAM
+
+    static Keypoint kp_buf[MAX_KEYPOINTS];
+    #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_T2P impl=BRAM
 
     {
     #pragma HLS DATAFLOW
@@ -225,51 +264,49 @@ void orb_extract(
         // Threshold=20, non-max suppression=true
         xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
         (img_blur, img_fast, 20);
+
+        
+        dump_to_bram(img_blur, blur_buf, rows, cols);
+        dump_fast_mask(img_fast, fast_buf, rows, cols);
     }
 
-    static uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH];
-    #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_2P impl=BRAM
-
-     DUMP_BLUR: for (int i = 0; i < rows * cols; i++) {
-        #pragma HLS PIPELINE II=1
-        blur_buf[i] = (uint8_t)img_blur.read(i);
-    }
 
     // ---------- Step 4: Collect keypoints from FAST mask ----------
     int nkp = 0;
 
-    Keypoint kp_buf[MAX_KEYPOINTS];
-    #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_T2P  impl=BRAM
 
     COLLECT_KP: for (int r = PATCH_SIZE/2; r < rows - PATCH_SIZE/2; r++) {
         for (int c = PATCH_SIZE/2; c < cols - PATCH_SIZE/2; c++) {
             #pragma HLS PIPELINE II=1
-            uint8_t val = img_fast.read(r * cols + c);
+            uint8_t val = fast_buf[r * cols + c]; 
             int idx = (nkp < MAX_KEYPOINTS) ? nkp : MAX_KEYPOINTS - 1;
             bool valid = (val > 0) && (nkp < MAX_KEYPOINTS);
             if (valid) {
                 kp_buf[idx].x     = c;
                 kp_buf[idx].y     = r;
                 kp_buf[idx].score = val;
+                kp_buf[nkp].angle = 0;  
                 nkp++;
             }
         }  
     }
     *num_keypoints = nkp;
     
-    WRITEBACK: for (int i = 0; i < nkp; i++) {
-    #pragma HLS PIPELINE II=1
-        keypoints_out[i] = kp_buf[i];
-    }
+
 
     // ---------- Step 5: Orientation + Descriptor ----------
     DESC_LOOP: for (int i = 0; i < nkp; i++) {
-        int kx = keypoints_out[i].x;
-        int ky = keypoints_out[i].y;
+        int kx = kp_buf[i].x;
+        int ky = kp_buf[i].y;
 
         int16_t angle = compute_orientation_buf(blur_buf, kx, ky, rows, cols);
-        keypoints_out[i].angle = angle;
+        kp_buf[i].angle = angle;
 
-        compute_descriptor_buf(blur_buf, kx, ky, angle, rows, cols, descriptors_out[i]);
+        compute_descriptor_buf(blur_buf, kx, ky, angle, rows, cols, descriptors_out[i].d);
+    }
+
+    WRITEBACK: for (int i = 0; i < nkp; i++) {
+    #pragma HLS PIPELINE II=1
+        keypoints_out[i] = pack_keypoint(kp_buf[i]);
     }
 }
