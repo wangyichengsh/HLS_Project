@@ -217,6 +217,46 @@ static void dump_fast_mask(
     }
 }
 
+static void split_blur(
+    img_mat_t &src,
+    img_mat_t &dst_fast,      // 给 fast 用
+    uint8_t    dst_buf[],     // 给 descriptor 用
+    int rows, int cols)
+{
+    for (int i = 0; i < rows * cols; i++) {
+    #pragma HLS PIPELINE II=1
+        uint8_t val = (uint8_t)src.read(i);
+        dst_fast.write(i, val);
+        dst_buf[i] = val;
+    }
+}
+
+static void dataflow_pipeline(
+    hls::stream<pixel_t> &image_in,
+    uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH],
+    uint8_t fast_buf[MAX_HEIGHT * MAX_WIDTH],
+    int rows, int cols)
+{
+#pragma HLS DATAFLOW  
+    img_mat_t img_raw(rows, cols);
+    img_mat_t img_blur(rows, cols);
+    img_mat_t img_blur_fast(rows, cols);
+    img_mat_t img_fast(rows, cols);
+
+    xf::cv::AXIvideo2xfMat(image_in, img_raw);
+
+    xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
+                    XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+    (img_raw, img_blur, 2.0f);
+
+    split_blur(img_blur, img_blur_fast, blur_buf, rows, cols);
+
+    xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+    (img_blur_fast, img_fast, 20);
+
+    dump_fast_mask(img_fast, fast_buf, rows, cols);
+}
+
 
 // -------------------------------------------------------
 // Top-level ORB extractor
@@ -239,9 +279,6 @@ void orb_extract(
 #pragma HLS INTERFACE s_axilite port=return
 
     // ---------- Step 1: Receive AXI stream into Mat ----------
-    img_mat_t img_raw(rows, cols);
-    img_mat_t img_blur(rows, cols);
-    img_mat_t img_fast(rows, cols);  // FAST writes mask here
 
     static uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH];
     #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_2P impl=BRAM
@@ -251,25 +288,7 @@ void orb_extract(
     static Keypoint kp_buf[MAX_KEYPOINTS];
     #pragma HLS BIND_STORAGE variable=kp_buf type=RAM_T2P impl=BRAM
 
-    {
-    #pragma HLS DATAFLOW
-        xf::cv::AXIvideo2xfMat(image_in, img_raw);
-
-        // ---------- Step 2: Gaussian blur (reduces noise) ----------
-        xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
-                        XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
-        (img_raw, img_blur, 2.0f);
-    
-        // ---------- Step 3: FAST corner detection ----------
-        // Threshold=20, non-max suppression=true
-        xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
-        (img_blur, img_fast, 20);
-
-        
-        dump_to_bram(img_blur, blur_buf, rows, cols);
-        dump_fast_mask(img_fast, fast_buf, rows, cols);
-    }
-
+    dataflow_pipeline(image_in, blur_buf, fast_buf, rows, cols);
 
     // ---------- Step 4: Collect keypoints from FAST mask ----------
     int nkp = 0;

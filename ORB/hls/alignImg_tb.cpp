@@ -204,9 +204,13 @@ int main(int argc, char** argv) {
 
     std::cout << "\nRunning HLS ORB...\n";
     orb_extract(axi_in1, gray1.rows, gray1.cols,
-                hls_kps1_raw, hls_desc1, &hls_n1);
+                hls_kps1_raw, hls_desc1, &hls_n1);          
     orb_extract(axi_in2, gray2.rows, gray2.cols,
-                hls_kps2_raw, hls_desc2, &hls_n2);            
+                hls_kps2_raw, hls_desc2, &hls_n2); 
+    // orb_extract(axi_in1, 128, 128,
+    //             hls_kps1_raw, hls_desc1, &hls_n1);          
+    // orb_extract(axi_in2, 128, 128,
+    //             hls_kps2_raw, hls_desc2, &hls_n2);                        
     std::cout << "Image 1 HLS detected  : " << hls_n1 << " keypoints\n";
     std::cout << "Image 2 HLS detected  : " << hls_n2 << " keypoints\n";
 

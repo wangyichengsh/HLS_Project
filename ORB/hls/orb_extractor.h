@@ -13,6 +13,8 @@
 
 #define MAX_HEIGHT  683
 #define MAX_WIDTH   1024
+// #define MAX_HEIGHT  128
+// #define MAX_WIDTH   128
 #define MAX_KEYPOINTS 500
 #define PATCH_SIZE  31      // ORB patch radius = 15
 #define DESCRIPTOR_BITS 256 // standard ORB
