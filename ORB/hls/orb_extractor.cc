@@ -242,6 +242,11 @@ static void dataflow_pipeline(
     img_mat_t img_blur(rows, cols);
     img_mat_t img_blur_fast(rows, cols);
     img_mat_t img_fast(rows, cols);
+    
+#pragma HLS stream variable=img_raw.data
+#pragma HLS stream variable=img_blur.data
+#pragma HLS stream variable=img_blur_fast.data
+#pragma HLS stream variable=img_fast.data
 
     xf::cv::AXIvideo2xfMat(image_in, img_raw);
 
