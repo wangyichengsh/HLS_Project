@@ -242,7 +242,7 @@ static void dataflow_pipeline(
     img_mat_t img_blur(rows, cols);
     img_mat_t img_blur_fast(rows, cols);
     img_mat_t img_fast(rows, cols);
-    
+
 #pragma HLS stream variable=img_raw.data
 #pragma HLS stream variable=img_blur.data
 #pragma HLS stream variable=img_blur_fast.data
@@ -276,9 +276,9 @@ void orb_extract(
 #pragma HLS INTERFACE axis      port=image_in
 #pragma HLS INTERFACE s_axilite port=rows
 #pragma HLS INTERFACE s_axilite port=cols
-#pragma HLS INTERFACE m_axi     port=keypoints_out   bundle=RESULT_BUS \
+#pragma HLS INTERFACE m_axi     port=keypoints_out   bundle=KP_BUS \
                                 depth=MAX_KEYPOINTS   offset=slave
-#pragma HLS INTERFACE m_axi     port=descriptors_out bundle=RESULT_BUS \
+#pragma HLS INTERFACE m_axi     port=descriptors_out bundle=DESC_BUS \
                                 depth=MAX_KEYPOINTS   offset=slave
 #pragma HLS INTERFACE s_axilite port=num_keypoints
 #pragma HLS INTERFACE s_axilite port=return
@@ -309,7 +309,7 @@ void orb_extract(
                 kp_buf[idx].x     = c;
                 kp_buf[idx].y     = r;
                 kp_buf[idx].score = val;
-                kp_buf[nkp].angle = 0;  
+                kp_buf[idx].angle = 0;  
                 nkp++;
             }
         }  

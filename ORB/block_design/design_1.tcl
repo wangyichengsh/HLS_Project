@@ -238,7 +238,7 @@ proc create_root_design { parentCell } {
   set_property -dict [list \
     CONFIG.NUM_CLKS {2} \
     CONFIG.NUM_MI {6} \
-    CONFIG.NUM_SI {5} \
+    CONFIG.NUM_SI {6} \
   ] $smartconnect_0
 
 
@@ -277,7 +277,7 @@ proc create_root_design { parentCell } {
   # Create instance: axi_bram_ctrl_2, and set properties
   set axi_bram_ctrl_2 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_bram_ctrl:4.1 axi_bram_ctrl_2 ]
   set_property -dict [list \
-    CONFIG.DATA_WIDTH {64} \
+    CONFIG.DATA_WIDTH {256} \
     CONFIG.SINGLE_PORT_BRAM {1} \
   ] $axi_bram_ctrl_2
 
@@ -286,7 +286,8 @@ proc create_root_design { parentCell } {
   set blk_mem_gen_2 [ create_bd_cell -type ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 blk_mem_gen_2 ]
   set_property -dict [list \
     CONFIG.Memory_Type {Single_Port_RAM} \
-    CONFIG.Write_Width_A {64} \
+    CONFIG.Read_Width_A {256} \
+    CONFIG.Write_Width_A {256} \
     CONFIG.use_bram_block {BRAM_Controller} \
   ] $blk_mem_gen_2
 
@@ -344,13 +345,22 @@ proc create_root_design { parentCell } {
   ] $inverter_0
 
 
+  # Create instance: and_orb_rst, and set properties
+  set and_orb_rst [ create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 and_orb_rst ]
+  set_property -dict [list \
+    CONFIG.C_OPERATION {and} \
+    CONFIG.C_SIZE {1} \
+  ] $and_orb_rst
+
+
   # Create interface connections
   connect_bd_intf_net -intf_net axi_bram_ctrl_0_BRAM_PORTA [get_bd_intf_pins axi_bram_ctrl_0/BRAM_PORTA] [get_bd_intf_pins blk_mem_gen_0/BRAM_PORTA]
   connect_bd_intf_net -intf_net axi_bram_ctrl_1_BRAM_PORTA [get_bd_intf_pins axi_bram_ctrl_1/BRAM_PORTA] [get_bd_intf_pins blk_mem_gen_1/BRAM_PORTA]
   connect_bd_intf_net -intf_net axi_bram_ctrl_2_BRAM_PORTA [get_bd_intf_pins axi_bram_ctrl_2/BRAM_PORTA] [get_bd_intf_pins blk_mem_gen_2/BRAM_PORTA]
   connect_bd_intf_net -intf_net axi_dma_0_M_AXIS_MM2S [get_bd_intf_pins axi_dma_0/M_AXIS_MM2S] [get_bd_intf_pins orb_extract_0/image_in]
   connect_bd_intf_net -intf_net axi_dma_0_M_AXI_MM2S [get_bd_intf_pins axi_dma_0/M_AXI_MM2S] [get_bd_intf_pins smartconnect_0/S03_AXI]
-  connect_bd_intf_net -intf_net orb_extract_0_m_axi_RESULT_BUS [get_bd_intf_pins orb_extract_0/m_axi_RESULT_BUS] [get_bd_intf_pins smartconnect_0/S02_AXI]
+  connect_bd_intf_net -intf_net orb_extract_0_m_axi_DESC_BUS [get_bd_intf_pins orb_extract_0/m_axi_DESC_BUS] [get_bd_intf_pins smartconnect_0/S05_AXI]
+  connect_bd_intf_net -intf_net orb_extract_0_m_axi_KP_BUS [get_bd_intf_pins orb_extract_0/m_axi_KP_BUS] [get_bd_intf_pins smartconnect_0/S02_AXI]
   connect_bd_intf_net -intf_net smartconnect_0_M00_AXI [get_bd_intf_pins smartconnect_0/M00_AXI] [get_bd_intf_pins axi_bram_ctrl_0/S_AXI]
   connect_bd_intf_net -intf_net smartconnect_0_M01_AXI [get_bd_intf_pins smartconnect_0/M01_AXI] [get_bd_intf_pins axi_bram_ctrl_1/S_AXI]
   connect_bd_intf_net -intf_net smartconnect_0_M02_AXI [get_bd_intf_pins smartconnect_0/M02_AXI] [get_bd_intf_pins axi_bram_ctrl_2/S_AXI]
@@ -364,9 +374,12 @@ proc create_root_design { parentCell } {
   connect_bd_intf_net -intf_net xdma_0_pcie_mgt [get_bd_intf_ports pcie_7x_mgt_rtl_0] [get_bd_intf_pins xdma_0/pcie_mgt]
 
   # Create port connections
+  connect_bd_net -net and_orb_rst_Res  [get_bd_pins and_orb_rst/Res] \
+  [get_bd_pins orb_extract_0/ap_rst_n]
   connect_bd_net -net axi_dma_0_mm2s_introut  [get_bd_pins axi_dma_0/mm2s_introut] \
   [get_bd_pins xlconcat_0/In0]
-  connect_bd_net -net axi_dma_0_mm2s_prmry_reset_out_n  [get_bd_pins axi_dma_0/mm2s_prmry_reset_out_n]
+  connect_bd_net -net axi_dma_0_mm2s_prmry_reset_out_n  [get_bd_pins axi_dma_0/mm2s_prmry_reset_out_n] \
+  [get_bd_pins and_orb_rst/Op2]
   connect_bd_net -net clk_in1_0_1  [get_bd_ports clk_in1_0] \
   [get_bd_pins clk_wiz_0/clk_in1]
   connect_bd_net -net clk_wiz_0_clk_out1  [get_bd_pins clk_wiz_0/clk_out1] \
@@ -376,9 +389,9 @@ proc create_root_design { parentCell } {
   [get_bd_pins axi_bram_ctrl_1/s_axi_aclk] \
   [get_bd_pins axi_bram_ctrl_2/s_axi_aclk] \
   [get_bd_pins axi_dma_0/m_axi_mm2s_aclk] \
-  [get_bd_pins orb_extract_0/ap_clk] \
   [get_bd_pins axi_dma_0/s_axi_lite_aclk] \
-  [get_bd_pins axi_gpio_0/s_axi_aclk]
+  [get_bd_pins axi_gpio_0/s_axi_aclk] \
+  [get_bd_pins orb_extract_0/ap_clk]
   connect_bd_net -net clk_wiz_0_locked  [get_bd_pins clk_wiz_0/locked] \
   [get_bd_pins proc_sys_reset_0/dcm_locked]
   connect_bd_net -net inverter_0_Res  [get_bd_pins inverter_0/Res] \
@@ -389,9 +402,10 @@ proc create_root_design { parentCell } {
   [get_bd_pins axi_bram_ctrl_0/s_axi_aresetn] \
   [get_bd_pins axi_bram_ctrl_1/s_axi_aresetn] \
   [get_bd_pins axi_bram_ctrl_2/s_axi_aresetn] \
-  [get_bd_pins orb_extract_0/ap_rst_n] \
   [get_bd_pins axi_dma_0/axi_resetn] \
-  [get_bd_pins axi_gpio_0/s_axi_aresetn]
+  [get_bd_pins axi_gpio_0/s_axi_aresetn] \
+  [get_bd_pins smartconnect_0/aresetn] \
+  [get_bd_pins and_orb_rst/Op1]
   connect_bd_net -net reset_rtl_0_1  [get_bd_ports reset_rtl_0] \
   [get_bd_pins xdma_0/sys_rst_n] \
   [get_bd_pins inverter_0/Op1]
@@ -412,9 +426,8 @@ proc create_root_design { parentCell } {
   assign_bd_address -offset 0x00310000 -range 0x00001000 -target_address_space [get_bd_addr_spaces xdma_0/M_AXI_LITE] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg] -force
   assign_bd_address -offset 0x00320000 -range 0x00010000 -target_address_space [get_bd_addr_spaces xdma_0/M_AXI_LITE] [get_bd_addr_segs orb_extract_0/s_axi_control/Reg] -force
   assign_bd_address -offset 0x00000000 -range 0x00100000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0] -force
-  assign_bd_address -offset 0x00000000 -range 0x00100000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0] -force
-  assign_bd_address -offset 0x00100000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs axi_bram_ctrl_1/S_AXI/Mem0] -force
-  assign_bd_address -offset 0x00200000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs axi_bram_ctrl_2/S_AXI/Mem0] -force
+  assign_bd_address -offset 0x00200000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs axi_bram_ctrl_2/S_AXI/Mem0] -force
+  assign_bd_address -offset 0x00100000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs axi_bram_ctrl_1/S_AXI/Mem0] -force
 
   # Exclude Address Segments
   exclude_bd_addr_seg -offset 0x00100000 -range 0x00010000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs axi_bram_ctrl_1/S_AXI/Mem0]
@@ -422,9 +435,16 @@ proc create_root_design { parentCell } {
   exclude_bd_addr_seg -offset 0x00300000 -range 0x00010000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs axi_dma_0/S_AXI_LITE/Reg]
   exclude_bd_addr_seg -offset 0x00310000 -range 0x00001000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg]
   exclude_bd_addr_seg -offset 0x00320000 -range 0x00010000 -target_address_space [get_bd_addr_spaces axi_dma_0/Data_MM2S] [get_bd_addr_segs orb_extract_0/s_axi_control/Reg]
-  exclude_bd_addr_seg -offset 0x00300000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs axi_dma_0/S_AXI_LITE/Reg]
-  exclude_bd_addr_seg -offset 0x00310000 -range 0x00001000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg]
-  exclude_bd_addr_seg -offset 0x00320000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_RESULT_BUS] [get_bd_addr_segs orb_extract_0/s_axi_control/Reg]
+  exclude_bd_addr_seg -offset 0x00000000 -range 0x00100000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0]
+  exclude_bd_addr_seg -offset 0x00100000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs axi_bram_ctrl_1/S_AXI/Mem0]
+  exclude_bd_addr_seg -offset 0x00300000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs axi_dma_0/S_AXI_LITE/Reg]
+  exclude_bd_addr_seg -offset 0x00310000 -range 0x00001000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg]
+  exclude_bd_addr_seg -offset 0x00320000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_DESC_BUS] [get_bd_addr_segs orb_extract_0/s_axi_control/Reg]
+  exclude_bd_addr_seg -offset 0x00000000 -range 0x00100000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0]
+  exclude_bd_addr_seg -offset 0x00200000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs axi_bram_ctrl_2/S_AXI/Mem0]
+  exclude_bd_addr_seg -offset 0x00300000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs axi_dma_0/S_AXI_LITE/Reg]
+  exclude_bd_addr_seg -offset 0x00310000 -range 0x00001000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg]
+  exclude_bd_addr_seg -offset 0x00320000 -range 0x00010000 -target_address_space [get_bd_addr_spaces orb_extract_0/Data_m_axi_KP_BUS] [get_bd_addr_segs orb_extract_0/s_axi_control/Reg]
   exclude_bd_addr_seg -offset 0x00000000 -range 0x00100000 -target_address_space [get_bd_addr_spaces xdma_0/M_AXI] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0]
   exclude_bd_addr_seg -offset 0x00100000 -range 0x00010000 -target_address_space [get_bd_addr_spaces xdma_0/M_AXI] [get_bd_addr_segs axi_bram_ctrl_1/S_AXI/Mem0]
   exclude_bd_addr_seg -offset 0x00200000 -range 0x00010000 -target_address_space [get_bd_addr_spaces xdma_0/M_AXI] [get_bd_addr_segs axi_bram_ctrl_2/S_AXI/Mem0]
