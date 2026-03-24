@@ -63,29 +63,9 @@ else if (testname == "orb_test") begin
   $display("[%t] 图像写入完成 ✓", $realtime);
 
   //--------------------------------------------------------------------------
-  // Step 3: 配置 ORB 参数（通过 BAR0 控制寄存器）
+  // Step 3: 启动 AXI DMA
   //--------------------------------------------------------------------------
-  $display("\n[%t] Step3: 配置 ORB 参数...", $realtime);
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0010, 32'd128, 4'hF); // rows
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0018, 32'd128, 4'hF); // cols
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0020, 32'h0010_0000, 4'hF); // kp addr lo
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0024, 32'h0,         4'hF); // kp addr hi
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_002C, 32'h0020_0000, 4'hF); // desc addr lo
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0030, 32'h0,         4'hF); // desc addr hi
-  $display("[%t] ORB 参数配置完成 ✓", $realtime);
-
-  //--------------------------------------------------------------------------
-  // Step 4: 先启动 ORB，再启动 DMA
-  //--------------------------------------------------------------------------
-  board.RP.tx_usrapp.TSK_XDMA_REG_READ(32'h0032_0000);
-  $display("[%t] Step4: ORB ap_ctrl=0x%08X，写 ap_start...",
-           $realtime, board.RP.tx_usrapp.P_READ_DATA);
-  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0000, 32'h0001, 4'hF);
-
-  //--------------------------------------------------------------------------
-  // Step 5: 启动 AXI DMA
-  //--------------------------------------------------------------------------
-  $display("\n[%t] Step5: 启动 AXI DMA...", $realtime);
+  $display("\n[%t] Step4: 启动 AXI DMA...", $realtime);
   // 1. 先复位 DMA
   board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0030_0000, 32'h0004, 4'hF); // Reset=1
   board.RP.tx_usrapp.TSK_TX_CLK_EAT(1000); // 等待复位完成
@@ -97,6 +77,28 @@ else if (testname == "orb_test") begin
   
   board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0030_0018, 32'h0000_0000, 4'hF); // SA lo
   board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0030_001C, 32'h0,         4'hF); // SA hi
+  
+  
+  //--------------------------------------------------------------------------
+  // Step 4: 配置 ORB 参数（通过 BAR0 控制寄存器）
+  //--------------------------------------------------------------------------
+  $display("\n[%t] Step3: 配置 ORB 参数...", $realtime);
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0010, 32'd128, 4'hF); // rows
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0018, 32'd128, 4'hF); // cols
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0020, 32'h0010_0000, 4'hF); // kp addr lo
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0024, 32'h0,         4'hF); // kp addr hi
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_002C, 32'h0020_0000, 4'hF); // desc addr lo
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0030, 32'h0,         4'hF); // desc addr hi
+  $display("[%t] ORB 参数配置完成 ✓", $realtime);  
+  
+  //--------------------------------------------------------------------------
+  // Step 5: 启动 ORB
+  //--------------------------------------------------------------------------
+  board.RP.tx_usrapp.TSK_XDMA_REG_READ(32'h0032_0000);
+  $display("[%t] Step5: ORB ap_ctrl=0x%08X，写 ap_start...",
+           $realtime, board.RP.tx_usrapp.P_READ_DATA);
+  board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0032_0000, 32'h0001, 4'hF);
+  TSK_TX_CLK_EAT(10);
   board.RP.tx_usrapp.TSK_XDMA_REG_WRITE(32'h0030_0028, 32'd16384, 4'hF); // LENGTH
   $display("[%t] DMA 已启动 ✓", $realtime);
   
@@ -111,15 +113,15 @@ else if (testname == "orb_test") begin
   $display("\n[%t] Step6: 等待 ORB 完成...", $realtime);
   orb_timeout = 0;
   orb_status  = 32'h0;
-  while (!(orb_status & 32'h4)) begin
-    board.RP.tx_usrapp.TSK_TX_CLK_EAT(500000);
+  while (!(orb_status & 32'h6)) begin
+    board.RP.tx_usrapp.TSK_TX_CLK_EAT(25000);
     board.RP.tx_usrapp.TSK_XDMA_REG_READ(32'h0032_0000);
     orb_status = board.RP.tx_usrapp.P_READ_DATA;
     orb_timeout = orb_timeout + 1;
     if (orb_timeout % 50 == 0)
       $display("  [%t] 等待中... ap_ctrl=0x%08X (timeout=%0d)",
                $realtime, orb_status, orb_timeout);
-    if (orb_timeout > 20) begin
+    if (orb_timeout > 200) begin
       $display("ERROR: ORB 超时！ap_ctrl=0x%08X", orb_status);
       testError = 1'b1;
       $finish;

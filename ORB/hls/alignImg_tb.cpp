@@ -40,6 +40,22 @@ void fill_result_cpu(cv::Mat& result, const cv::Mat& fill_image) {
 // ---------------------------------------------------------------------------
 // Helper: pack cv::Mat (grayscale) into AXI stream
 // ---------------------------------------------------------------------------
+// static void mat_to_axi_stream(const cv::Mat &gray, hls::stream<pixel_t> &stream)
+// {
+//     assert(gray.type() == CV_8UC1);
+//     for (int r = 0; r < gray.rows; r++) {
+//         for (int c = 0; c < gray.cols; c++) {
+//             pixel_t px;
+//             px.data = gray.at<uint8_t>(r, c);
+//             px.user = (r == 0 && c == 0) ? 1 : 0;  // TUSER: Start of Frame
+//             px.last = (c == gray.cols - 1) ? 1 : 0; // TLAST: End of Line
+//             px.keep = 1;
+//             px.strb = 1;
+//             stream.write(px);
+//         }
+//     }
+// }
+
 static void mat_to_axi_stream(const cv::Mat &gray, hls::stream<pixel_t> &stream)
 {
     assert(gray.type() == CV_8UC1);
@@ -47,7 +63,6 @@ static void mat_to_axi_stream(const cv::Mat &gray, hls::stream<pixel_t> &stream)
         for (int c = 0; c < gray.cols; c++) {
             pixel_t px;
             px.data = gray.at<uint8_t>(r, c);
-            px.user = (r == 0 && c == 0) ? 1 : 0;  // TUSER: Start of Frame
             px.last = (c == gray.cols - 1) ? 1 : 0; // TLAST: End of Line
             px.keep = 1;
             px.strb = 1;
@@ -203,14 +218,14 @@ int main(int argc, char** argv) {
     mat_to_axi_stream(gray2, axi_in2);
 
     std::cout << "\nRunning HLS ORB...\n";
-    orb_extract(axi_in1, gray1.rows, gray1.cols,
-                hls_kps1_raw, hls_desc1, &hls_n1);          
-    orb_extract(axi_in2, gray2.rows, gray2.cols,
-                hls_kps2_raw, hls_desc2, &hls_n2); 
-    // orb_extract(axi_in1, 128, 128,
+    // orb_extract(axi_in1, gray1.rows, gray1.cols,
     //             hls_kps1_raw, hls_desc1, &hls_n1);          
-    // orb_extract(axi_in2, 128, 128,
-    //             hls_kps2_raw, hls_desc2, &hls_n2);                        
+    // orb_extract(axi_in2, gray2.rows, gray2.cols,
+    //             hls_kps2_raw, hls_desc2, &hls_n2); 
+    orb_extract(axi_in1, 128, 128,
+                hls_kps1_raw, hls_desc1, &hls_n1);          
+    orb_extract(axi_in2, 128, 128,
+                hls_kps2_raw, hls_desc2, &hls_n2);                        
     std::cout << "Image 1 HLS detected  : " << hls_n1 << " keypoints\n";
     std::cout << "Image 2 HLS detected  : " << hls_n2 << " keypoints\n";
 

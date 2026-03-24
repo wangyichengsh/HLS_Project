@@ -5,21 +5,22 @@
 #include "ap_int.h"
 #include "hls_stream.h"
 #include "common/xf_common.hpp"
+#include "common/xf_utility.hpp"
 #include "common/xf_infra.hpp"
 #include "imgproc/xf_gaussian_filter.hpp"
 #include "imgproc/xf_pyr_down.hpp"
 #include "features/xf_fast.hpp"
 
 
-#define MAX_HEIGHT  683
-#define MAX_WIDTH   1024
-// #define MAX_HEIGHT  128
-// #define MAX_WIDTH   128
+// #define MAX_HEIGHT  683
+// #define MAX_WIDTH   1024
+#define MAX_HEIGHT  128
+#define MAX_WIDTH   128
 #define MAX_KEYPOINTS 500
 #define PATCH_SIZE  31      // ORB patch radius = 15
 #define DESCRIPTOR_BITS 256 // standard ORB
 
-typedef ap_axiu<8, 1, 1, 1> pixel_t;
+typedef ap_axiu<8, 0, 0, 0> pixel_t;
 typedef xf::cv::Mat<XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1> img_mat_t;
 
 struct Keypoint {

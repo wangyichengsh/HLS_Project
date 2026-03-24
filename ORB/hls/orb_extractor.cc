@@ -184,7 +184,7 @@ static void compute_descriptor_buf(
                                   BRIEF_PATTERN[i][3],
                                   cos_a, sin_a,
                                   rows, cols);
-
+                                  
         if (p1 < p2) {
             d[i / 64] |= (uint64_t)1 << (i % 64);
         }
@@ -231,6 +231,7 @@ static void split_blur(
     }
 }
 
+
 static void dataflow_pipeline(
     hls::stream<pixel_t> &image_in,
     uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH],
@@ -248,7 +249,8 @@ static void dataflow_pipeline(
 #pragma HLS stream variable=img_blur_fast.data
 #pragma HLS stream variable=img_fast.data
 
-    xf::cv::AXIvideo2xfMat(image_in, img_raw);
+    xf::cv::axiStrm2xfMat<8, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+        (image_in, img_raw);
 
     xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
                     XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>

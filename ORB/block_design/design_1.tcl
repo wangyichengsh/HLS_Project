@@ -261,6 +261,7 @@ proc create_root_design { parentCell } {
   set_property -dict [list \
     CONFIG.Memory_Type {Single_Port_RAM} \
     CONFIG.Operating_Mode_A {WRITE_FIRST} \
+    CONFIG.Read_Width_A {64} \
     CONFIG.Write_Width_A {64} \
     CONFIG.use_bram_block {BRAM_Controller} \
   ] $blk_mem_gen_1
