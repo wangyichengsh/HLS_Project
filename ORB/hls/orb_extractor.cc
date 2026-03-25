@@ -151,6 +151,7 @@ static void compute_descriptor_buf(
     uint8_t buf[], int kx, int ky, int16_t angle,
     int rows, int cols, uint64_t desc_out[4])
 {
+{ 
 #pragma HLS ARRAY_PARTITION variable=BRIEF_PATTERN complete dim=0
     uint64_t d[4] = {0, 0, 0, 0};
     // Precompute cos/sin in Q8
@@ -159,7 +160,7 @@ static void compute_descriptor_buf(
     int16_t cos_a, sin_a;
     // Map angle (0-359) to Q8 cos/sin
     // For real implementation: use ROM lookup table
-    int a = angle % 360;
+    int a = angle;
     // Very coarse approximation - replace with LUT in production
     if      (a <  45) { cos_a = 256;  sin_a = a*256/45;   }
     else if (a <  90) { cos_a = (90-a)*256/45; sin_a = 256; }
@@ -288,7 +289,7 @@ void orb_extract(
     // ---------- Step 1: Receive AXI stream into Mat ----------
 
     static uint8_t blur_buf[MAX_HEIGHT * MAX_WIDTH];
-    #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_2P impl=BRAM
+    #pragma HLS BIND_STORAGE variable=blur_buf type=RAM_T2P impl=BRAM
     static uint8_t fast_buf[MAX_HEIGHT * MAX_WIDTH];
     #pragma HLS BIND_STORAGE variable=fast_buf type=RAM_2P impl=BRAM
 
