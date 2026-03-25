@@ -128,7 +128,7 @@ static uint8_t sample_pixel_buf(
     int8_t px, int8_t py,
     int16_t cos_a, int16_t sin_a,
     int rows, int cols)
-{
+{ 
     // Rotate point (px,py) by angle
     int rx = (px * cos_a - py * sin_a) >> 8;
     int ry = (px * sin_a + py * cos_a) >> 8;
@@ -150,7 +150,6 @@ static uint8_t sample_pixel_buf(
 static void compute_descriptor_buf(
     uint8_t buf[], int kx, int ky, int16_t angle,
     int rows, int cols, uint64_t desc_out[4])
-{
 { 
 #pragma HLS ARRAY_PARTITION variable=BRIEF_PATTERN complete dim=0
     uint64_t d[4] = {0, 0, 0, 0};
