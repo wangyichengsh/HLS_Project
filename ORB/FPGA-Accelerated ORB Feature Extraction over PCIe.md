@@ -1,8 +1,5 @@
 **FPGA-Accelerated ORB Feature Extraction over PCIe**
 
-*Yicheng Wang*                                                                     
-
-*300402481 University of Ottawa*
 
 # 1\. Introduction
 
