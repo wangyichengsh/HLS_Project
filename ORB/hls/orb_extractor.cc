@@ -208,26 +208,32 @@ static void dump_to_bram(
 
 static void dump_fast_mask(
     img_mat_t &src,
-    uint8_t    dst[MAX_HEIGHT * MAX_WIDTH],
-    int        rows, int cols)
+    uint8_t    dst[MAX_HEIGHT * MAX_WIDTH])
 {
-    FAST_DUMP_LOOP: for (int i = 0; i < rows * cols; i++) {
+    FAST_DUMP_LOOP: for (int i = 0; i < LOOP_COUNT; i++) {
     #pragma HLS PIPELINE II=1
-        dst[i] = (uint8_t)src.read(i);
+    #pragma HLS LOOP_TRIPCOUNT min=LOOP_COUNT max=LOOP_COUNT
+        XF_TNAME(XF_8UC1, XF_NPPC8) val = src.read(i);
+        for (int k = 0; k < XF_NPPC8; k++) {
+        #pragma HLS UNROLL
+            dst[i * XF_NPPC8 + k] = (uint8_t)(val >> (k * 8));
+        }
     }
 }
 
 static void split_blur(
     img_mat_t &src,
-    img_mat_t &dst_fast,      // 给 fast 用
-    uint8_t    dst_buf[],     // 给 descriptor 用
-    int rows, int cols)
+    img_mat_t &dst_fast,      
+    uint8_t    dst_buf[])
 {
-    for (int i = 0; i < rows * cols; i++) {
+    for (int i = 0; i < LOOP_COUNT; i++) {
     #pragma HLS PIPELINE II=1
-        uint8_t val = (uint8_t)src.read(i);
-        dst_fast.write(i, val);
-        dst_buf[i] = val;
+        XF_TNAME(XF_8UC1, XF_NPPC8) val = src.read(i);
+        dst_fast.write(i, val);  
+        for (int k = 0; k < XF_NPPC8; k++) {
+        #pragma HLS UNROLL
+            dst_buf[i * XF_NPPC8 + k] = (uint8_t)(val >> (k * 8));
+        }
     }
 }
 
@@ -249,19 +255,19 @@ static void dataflow_pipeline(
 #pragma HLS stream variable=img_blur_fast.data
 #pragma HLS stream variable=img_fast.data
 
-    xf::cv::axiStrm2xfMat<8, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+    xf::cv::axiStrm2xfMat<64, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC8>
         (image_in, img_raw);
 
     xf::cv::GaussianBlur<7, XF_BORDER_REFLECT_101,
-                    XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+                    XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC8>
     (img_raw, img_blur, 2.0f);
 
-    split_blur(img_blur, img_blur_fast, blur_buf, rows, cols);
+    split_blur(img_blur, img_blur_fast, blur_buf);
 
-    xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC1>
+    xf::cv::fast<1, XF_8UC1, MAX_HEIGHT, MAX_WIDTH, XF_NPPC8>
     (img_blur_fast, img_fast, 20);
 
-    dump_fast_mask(img_fast, fast_buf, rows, cols);
+    dump_fast_mask(img_fast, fast_buf);
 }
 
 

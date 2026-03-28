@@ -59,13 +59,18 @@ void fill_result_cpu(cv::Mat& result, const cv::Mat& fill_image) {
 static void mat_to_axi_stream(const cv::Mat &gray, hls::stream<pixel_t> &stream)
 {
     assert(gray.type() == CV_8UC1);
+    assert(gray.cols % 8 == 0);  
+
     for (int r = 0; r < gray.rows; r++) {
-        for (int c = 0; c < gray.cols; c++) {
+        for (int c = 0; c < gray.cols; c += 8) {
             pixel_t px;
-            px.data = gray.at<uint8_t>(r, c);
-            px.last = (c == gray.cols - 1) ? 1 : 0; // TLAST: End of Line
-            px.keep = 1;
-            px.strb = 1;
+            px.data = 0;
+            for (int k = 0; k < 8; k++) {
+                px.data |= ((uint64_t)gray.at<uint8_t>(r, c + k)) << (k * 8);
+            }
+            px.last = (c + 8 >= gray.cols) ? 1 : 0;  
+            px.keep = 0xFF;   
+            px.strb = 0xFF;
             stream.write(px);
         }
     }
@@ -180,6 +185,8 @@ int main(int argc, char** argv) {
     // 1. Load Images
     string img1_path = "foto1A.jpg";
     string img2_path = "foto1B.jpg";
+    // string img1_path = "image1.jpeg";
+    // string img2_path = "image2.jpeg";
     
     cv::Mat image1 = imread(img1_path, cv::IMREAD_COLOR);
     cv::Mat image2 = imread(img2_path, cv::IMREAD_COLOR);
@@ -214,6 +221,8 @@ int main(int argc, char** argv) {
 
     hls::stream<pixel_t> axi_in1("axi_in1");
     hls::stream<pixel_t> axi_in2("axi_in2");
+
+
     mat_to_axi_stream(gray1, axi_in1);
     mat_to_axi_stream(gray2, axi_in2);
 

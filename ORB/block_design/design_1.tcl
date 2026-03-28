@@ -300,7 +300,7 @@ proc create_root_design { parentCell } {
     CONFIG.c_include_s2mm {0} \
     CONFIG.c_include_sg {0} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
-    CONFIG.c_m_axis_mm2s_tdata_width {8} \
+    CONFIG.c_m_axis_mm2s_tdata_width {64} \
     CONFIG.c_mm2s_burst_size {256} \
     CONFIG.c_sg_length_width {23} \
   ] $axi_dma_0
